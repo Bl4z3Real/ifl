@@ -85,6 +85,16 @@ const AWARDS_LIST = [
   "MVP di Stagione","Squadra dell'Anno","Premio Leggenda"
 ];
 
+// Simple aesthetic presets for character creation — color-based, no external art assets needed.
+const APPEARANCE_PRESETS = [
+  { id:"p1", label:"Notturno",  primary:"#e3ab2c", secondary:"#0d1320", skin:"#c48a5a" },
+  { id:"p2", label:"Adriatico", primary:"#6fd6ff", secondary:"#0b1a22", skin:"#a9714a" },
+  { id:"p3", label:"Vulcanico", primary:"#e8543f", secondary:"#1a0d0a", skin:"#e0b089" },
+  { id:"p4", label:"Smeraldo",  primary:"#3ecf7e", secondary:"#0a1a12", skin:"#8a5a35" },
+  { id:"p5", label:"Regale",    primary:"#b98af0", secondary:"#140b1f", skin:"#f0cba3" },
+  { id:"p6", label:"Ghiaccio",  primary:"#eef1f6", secondary:"#141a24", skin:"#c48a5a" },
+];
+
 const FIRST_NAMES = ["Luca","Marco","Alessandro","Davide","Andrea","Matteo","Simone","Nicolo","Gabriel","Rafael",
   "Bruno","Diego","Mateus","Thiago","Lucas","Hugo","Leo","Nathan","Kevin","Erik","Lars","Jonas","Felix","Noah",
   "Adam","Kofi","Malik","Amir","Yusuf","Kenji","Haruto","Min-jun","Carlos","Pablo","Javier","Tomas"];
