@@ -63,17 +63,29 @@
     </div>
   </section>
 
-  <!-- ============ PLAYER CREATION ============ -->
+  <!-- ============ PLAYER CREATION (WIZARD) ============ -->
   <section id="screen-create" class="screen">
     <header class="subheader">
       <button class="back-btn" data-action="back-to-menu">‹ Menu</button>
       <h1>Crea il tuo calciatore</h1>
     </header>
+
+    <div class="wizard-dots">
+      <div class="wizard-dot active" data-step="1"><span>1</span>Identità</div>
+      <div class="wizard-dot" data-step="2"><span>2</span>Aspetto</div>
+      <div class="wizard-dot" data-step="3"><span>3</span>Riepilogo</div>
+    </div>
+
     <div class="create-form-wrap">
-      <form id="create-form" class="create-form">
+      <!-- STEP 1: identity & role -->
+      <form id="create-form" class="create-form wizard-step active" data-step="1">
         <div class="form-row">
           <label>Nome<input required maxlength="16" type="text" name="firstName" placeholder="Es. Marco"></label>
           <label>Cognome<input required maxlength="16" type="text" name="lastName" placeholder="Es. Rinaldi"></label>
+        </div>
+        <div class="form-row">
+          <label>Nome sulla maglia<input maxlength="12" type="text" name="shirtName" placeholder="Auto dal cognome"></label>
+          <label>Numero di maglia<input required type="number" name="shirtNumber" min="1" max="99" value="10"></label>
         </div>
         <div class="form-row">
           <label>Età<input required type="number" name="age" min="16" max="21" value="17"></label>
@@ -105,13 +117,39 @@
           </label>
         </div>
         <div id="stat-preview" class="stat-preview"></div>
-        <button type="submit" class="menu-btn-primary form-submit">Inizia la carriera</button>
+        <button type="button" class="menu-btn-primary form-submit" data-action="wizard-next">Continua</button>
       </form>
+
+      <!-- STEP 2: appearance -->
+      <div class="wizard-step" data-step="2">
+        <div class="create-form">
+          <h3 class="wizard-heading">Scegli l'identità estetica</h3>
+          <p class="wizard-hint">Un tema cromatico per la tua card giocatore e la tua identità in IFL.</p>
+          <div class="appearance-grid" id="appearance-grid"></div>
+          <div class="btn-row" style="margin-top:18px;">
+            <button class="btn-sm" data-action="wizard-back">‹ Indietro</button>
+            <button class="menu-btn-primary form-submit" data-action="wizard-review" style="flex:1;">Vedi riepilogo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3: summary -->
+      <div class="wizard-step" data-step="3">
+        <div class="create-form">
+          <h3 class="wizard-heading">Riepilogo calciatore</h3>
+          <div id="summary-content"></div>
+          <div class="btn-row" style="margin-top:18px;">
+            <button class="btn-sm" data-action="wizard-back-2">‹ Modifica</button>
+            <button class="menu-btn-primary form-submit" data-action="confirm-career" style="flex:1;">Inizia la carriera</button>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- ============ HUB / DASHBOARD ============ -->
   <section id="screen-hub" class="screen">
+    <div class="hub-bg"></div>
     <header class="hub-header">
       <div class="hub-identity">
         <div class="hub-avatar" id="hub-avatar"></div>
@@ -125,11 +163,17 @@
     </header>
 
     <nav class="hub-tabs">
-      <button class="hub-tab active" data-tab="overview">Panoramica</button>
-      <button class="hub-tab" data-tab="training">Allenamento</button>
+      <button class="hub-tab active" data-tab="overview">Home</button>
       <button class="hub-tab" data-tab="squad">Profilo</button>
-      <button class="hub-tab" data-tab="history">Storico</button>
+      <button class="hub-tab" data-tab="stats">Statistiche</button>
+      <button class="hub-tab" data-tab="calendar">Calendario</button>
+      <button class="hub-tab" data-tab="standings">Classifica</button>
+      <button class="hub-tab" data-tab="objectives">Obiettivi</button>
+      <button class="hub-tab" data-tab="training">Allenamento</button>
       <button class="hub-tab" data-tab="national">Nazionale</button>
+      <button class="hub-tab" data-tab="market">Mercato</button>
+      <button class="hub-tab" data-tab="notifications">Notifiche <span class="tab-badge" id="notif-badge"></span></button>
+      <button class="hub-tab" data-tab="settings">Impostazioni</button>
     </nav>
 
     <div class="hub-body" id="hub-body">
