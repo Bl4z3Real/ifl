@@ -14,8 +14,152 @@ function newSeasonStats(){
     teamWins:0, teamDraws:0, teamLosses:0, teamPoints:0 };
 }
 
-function initCareer(form){
-  const player = createPlayer(form);
+// --- fixtures / calendar ---
+function generateFixtures(career){
+  const club = currentClub(career);
+  const rivals = CLUBS.filter(c=>c.league===club.league && c.id!==club.id);
+  const fixtures = [];
+  for(let i=0;i<career.seasonLength;i++){
+    const isCup = (i>0 && i%7===0 && club.tier!=="small");
+    const opponent = rivals[Math.floor(Math.random()*rivals.length)];
+    fixtures.push({
+      matchday: i+1,
+      opponent: opponent.name,
+      opponentTier: opponent.tier,
+      competition: isCup ? TROPHY_LIST.cup : (club.league),
+      home: i%2===0,
+      played:false,
+      result:null,
+      playerGoals:0, playerAssists:0, playerRating:null,
+    });
+  }
+  career.fixtures = fixtures;
+}
+
+// --- live league table ---
+function buildFreshTable(career){
+  const club = currentClub(career);
+  const table = {};
+  CLUBS.filter(c=>c.league===club.league).forEach(c=>{
+    table[c.id] = { clubId:c.id, name:c.name, played:0, points:0, gf:0, ga:0, w:0, d:0, l:0 };
+  });
+  career.leagueTable = table;
+}
+
+function updateLeagueTable(career, matchResult){
+  const club = currentClub(career);
+  const table = career.leagueTable;
+  if(!table || !table[club.id]) return;
+
+  // user's club: use the actual simulated result
+  applyTableResult(table[club.id], matchResult.teamResult);
+
+  // rivals: simulate a lightweight phantom result for the same matchday so the
+  // table evolves realistically alongside the player's own season
+  Object.values(table).forEach(row=>{
+    if(row.clubId===club.id) return;
+    const rivalClub = clubById(row.clubId);
+    const opp = clamp(rivalClub.strength + randFloat(-14,14), 30, 99);
+    const diff = (rivalClub.strength + randFloat(-8,8)) - opp;
+    const gf = clamp(Math.round(diff/12 + randFloat(-1,2.2)),0,6);
+    const ga = clamp(Math.round(-diff/12 + randFloat(-1,2.2)),0,6);
+    applyTableResult(row, { gf, ga, outcome: gf>ga?"V":(gf===ga?"P":"S") });
+  });
+}
+
+function applyTableResult(row, teamResult){
+  row.played++; row.gf += teamResult.gf; row.ga += teamResult.ga;
+  if(teamResult.outcome==="V"){ row.points+=3; row.w++; }
+  else if(teamResult.outcome==="P"){ row.points+=1; row.d++; }
+  else { row.l++; }
+}
+
+function sortedTable(career){
+  return Object.values(career.leagueTable).sort((a,b)=> b.points-a.points || (b.gf-b.ga)-(a.gf-a.ga));
+}
+
+function userTableRank(career){
+  const sorted = sortedTable(career);
+  return sorted.findIndex(r=>r.clubId===career.clubId) + 1;
+}
+
+// --- season objectives ---
+const OBJECTIVE_POOL = [
+  { id:"apps", label:(t)=>`Colleziona almeno ${t} presenze`, pick:(c)=>randInt(14,22),
+    progress:(c)=>c.seasonStats.apps, check:(c,t)=>c.seasonStats.apps>=t },
+  { id:"goal_contrib", label:(t)=>`Partecipa a ${t} gol (gol+assist)`, pick:(c)=>{
+      const attacking = ["ATT","AD","AS","COC"].includes(c.player.position);
+      return attacking ? randInt(12,20) : randInt(4,9);
+    }, progress:(c)=>c.seasonStats.goals+c.seasonStats.assists, check:(c,t)=>(c.seasonStats.goals+c.seasonStats.assists)>=t },
+  { id:"avg_rating", label:(t)=>`Media voto stagionale ≥ ${t.toFixed(1)}`, pick:()=>randFloat(6.4,6.9),
+    progress:(c)=> c.seasonStats.ratedApps>0 ? c.seasonStats.ratingSum/c.seasonStats.ratedApps : 0,
+    check:(c,t)=> c.seasonStats.ratedApps>=8 && (c.seasonStats.ratingSum/c.seasonStats.ratedApps)>=t },
+  { id:"trophy", label:()=>`Vinci un trofeo con il club`, pick:()=>1,
+    condition:(c)=>["big","super"].includes(currentClub(c).tier),
+    progress:(c)=>(c.seasonTrophies||[]).length>0?1:0, check:(c)=>(c.seasonTrophies||[]).length>0 },
+  { id:"national", label:()=>`Ottieni una convocazione in nazionale`, pick:()=>1,
+    condition:(c)=>c.national.caps<3,
+    progress:(c)=>c.national.calledThisSeasonFlag?1:0, check:(c)=>c.national.calledThisSeasonFlag },
+  { id:"condition", label:()=>`Evita infortuni gravi per l'intera stagione`, pick:()=>1,
+    progress:(c)=>c.hadSevereInjuryThisSeason?0:1, check:(c)=>!c.hadSevereInjuryThisSeason },
+];
+
+function generateObjectives(career){
+  career.national.calledThisSeasonFlag = false;
+  career.hadSevereInjuryThisSeason = false;
+  const pool = OBJECTIVE_POOL.filter(o=>!o.condition || o.condition(career));
+  const shuffled = pool.slice().sort(()=>Math.random()-0.5);
+  const chosen = shuffled.slice(0,3);
+  career.objectives = chosen.map(o=>{
+    const target = o.pick(career);
+    return { id:o.id, label:o.label(target), target, done:false, failed:false };
+  });
+}
+
+function updateObjectivesProgress(career){
+  if(!career.objectives) return;
+  career.objectives.forEach(obj=>{
+    const def = OBJECTIVE_POOL.find(o=>o.id===obj.id);
+    if(!def || obj.done) return;
+    obj.currentProgress = def.progress(career);
+  });
+}
+
+function finalizeObjectives(career){
+  if(!career.objectives) return [];
+  const results = [];
+  career.objectives.forEach(obj=>{
+    const def = OBJECTIVE_POOL.find(o=>o.id===obj.id);
+    if(!def) return;
+    const success = def.check(career, obj.target);
+    obj.done = success; obj.failed = !success;
+    results.push({ label: obj.label, done: success });
+    if(success){
+      career.player.morale = clamp(career.player.morale+5,0,100);
+      career.player.reputation = clamp(career.player.reputation+2,0,100);
+    }
+  });
+  return results;
+}
+
+// --- notifications ---
+function pushNotification(career, { title, text, type="info" }){
+  career.notifications = career.notifications || [];
+  career.notifications.unshift({ id: Date.now()+Math.random(), title, text, type,
+    season: career.season, matchday: career.matchdayIndex, read:false });
+  career.notifications = career.notifications.slice(0,60);
+}
+
+function unreadNotificationCount(career){
+  return (career.notifications||[]).filter(n=>!n.read).length;
+}
+
+function markAllNotificationsRead(career){
+  (career.notifications||[]).forEach(n=>n.read=true);
+}
+
+function initCareer(form, prebuiltPlayer){
+  const player = prebuiltPlayer || createPlayer(form);
   const club = CLUBS.find(c=>c.id===form.club);
   const career = {
     player,
@@ -29,18 +173,25 @@ function initCareer(form){
     trophies: [],
     awards: [],
     history: [],
-    national: { caps:0, goals:0, assists:0, isCaptain:false, tournamentsWon:[], debutSeason:null, calledThisSeason:false },
+    marketValueHistory: [],
+    national: { caps:0, goals:0, assists:0, isCaptain:false, tournamentsWon:[], debutSeason:null, calledThisSeasonFlag:false },
     currentInjury: null,
     injuryDaysThisSeason: 0,
+    hadSevereInjuryThisSeason: false,
     trainingFocus: "Tecnica",
     trainingSeasonsFocused:false,
     transferOffers: [],
     pendingTransferWindow:false,
     eventLog: [],
+    notifications: [],
     retired:false,
     records:0,
     retiredSummary:null,
   };
+  generateFixtures(career);
+  buildFreshTable(career);
+  generateObjectives(career);
+  pushNotification(career, { title:"Benvenuto in IFL", text:`La tua avventura con ${club.name} comincia ora. In bocca al lupo, ${player.firstName}.`, type:"season" });
   return career;
 }
 
@@ -76,6 +227,7 @@ function checkNationalCallup(career){
   if(Math.random() > chance) return null;
 
   if(!career.national.debutSeason) career.national.debutSeason = career.season;
+  career.national.calledThisSeasonFlag = true;
   const perfRating = 6.0 + (p.overall-70)/25 + randFloat(-0.6,0.9);
   const goals = poissonish(0.18 * (p.stats.shooting/100) * clamp((perfRating-5.5)/3,0.1,1.4));
   const assists = poissonish(0.14 * (p.stats.passing/100) * clamp((perfRating-5.5)/3,0.1,1.3));
@@ -87,6 +239,7 @@ function checkNationalCallup(career){
   if(!career.national.isCaptain && career.national.caps>35 && p.age>=27 && p.reputation>60 && Math.random()<0.15){
     career.national.isCaptain = true;
   }
+  pushNotification(career, { title:"Convocazione in Nazionale", text:`Sei stato convocato dalla nazionale ${p.nationality}. Presenza numero ${career.national.caps}.`, type:"national" });
   return { caps:career.national.caps, goals, assists, rating:Math.round(perfRating*10)/10 };
 }
 
@@ -114,10 +267,32 @@ function maybeNationalTournament(career){
 // --- advance one matchday ---
 function advanceMatchday(career){
   if(career.retired) return null;
+  const fixture = career.fixtures[career.matchdayIndex];
   const matchResult = simulateMatchday(career);
+
+  // record into calendar
+  if(fixture){
+    fixture.played = true;
+    fixture.result = matchResult.teamResult;
+    fixture.playerGoals = matchResult.goals;
+    fixture.playerAssists = matchResult.assists;
+    fixture.playerRating = matchResult.played ? matchResult.rating : null;
+    fixture.playerMinutes = matchResult.minutes;
+  }
+  updateLeagueTable(career, matchResult);
+
+  if(matchResult.injury && (matchResult.injury.severity==="grave" || matchResult.injury.severity==="ricorrente")){
+    career.hadSevereInjuryThisSeason = true;
+  }
+  if(matchResult.injury){
+    pushNotification(career, { title:"Infortunio", text:`${matchResult.injury.label}: circa ${matchResult.injury.days} giorni di stop.`, type:"injury" });
+  }
+
   applyTrainingMicro(career);
   const event = maybeTriggerEvent(career);
+  if(event){ pushNotification(career, { title:event.title, text:event.text, type:"event" }); }
   career.matchdayIndex++;
+  updateObjectivesProgress(career);
 
   let national = null;
   // international breaks roughly every 10 matchdays
@@ -145,10 +320,17 @@ function endSeason(career){
   const club = currentClub(career);
   s.avgRating = s.ratedApps>0 ? Math.round((s.ratingSum/s.ratedApps)*100)/100 : 0;
 
-  // approximate league finish based on club tier + team points performance
-  const tierBase = { super:2, big:6, medium:10, small:14 }[club.tier];
-  const perfShift = clamp((s.teamPoints - 45)/6, -4, 4);
-  let finish = Math.round(clamp(tierBase - perfShift + randInt(-2,2), 1, 17));
+  // real finishing position from the live-tracked league table (falls back to the
+  // approximate tier-based estimate if for any reason the table isn't available)
+  let finish;
+  if(career.leagueTable && career.leagueTable[club.id]){
+    finish = userTableRank(career);
+  } else {
+    const tierBase = { super:2, big:6, medium:10, small:14 }[club.tier];
+    const perfShift = clamp((s.teamPoints - 45)/6, -4, 4);
+    finish = Math.round(clamp(tierBase - perfShift + randInt(-2,2), 1, 17));
+  }
+  const finalTable = career.leagueTable ? sortedTable(career) : [];
 
   career.seasonTrophies = [];
   if(finish === 1){
@@ -162,7 +344,10 @@ function endSeason(career){
   if((club.tier==="super"||club.tier==="big") && Math.random() < (club.tier==="super"?0.15:0.05)){
     career.seasonTrophies.push(TROPHY_LIST.intl);
   }
-  career.seasonTrophies.forEach(name=>career.trophies.push({ name, season:career.season }));
+  career.seasonTrophies.forEach(name=>{
+    career.trophies.push({ name, season:career.season });
+    pushNotification(career, { title:"Trofeo vinto!", text:`Hai conquistato: ${name}.`, type:"season" });
+  });
 
   // individual awards
   const seasonAwards = [];
@@ -173,18 +358,29 @@ function endSeason(career){
   if(s.avgRating>=7.8 && Math.random()<0.3) seasonAwards.push("MVP di Stagione");
   if(s.avgRating>=7.4 && s.apps>=22 && Math.random()<0.25) seasonAwards.push("Squadra dell'Anno");
   if(p.overall>=90 && career.trophies.length>=8 && Math.random()<0.2) seasonAwards.push("Premio Leggenda");
-  seasonAwards.forEach(name=>career.awards.push({ name, season:career.season }));
+  seasonAwards.forEach(name=>{
+    career.awards.push({ name, season:career.season });
+    pushNotification(career, { title:"Premio individuale", text:`Hai vinto: ${name}.`, type:"season" });
+  });
+
+  // objectives: finalize before growth resets anything season-specific
+  const objectiveResults = finalizeObjectives(career);
+  objectiveResults.forEach(r=>{
+    if(r.done) pushNotification(career, { title:"Obiettivo raggiunto", text:r.label, type:"objective" });
+  });
 
   // growth & aging
   applySeasonGrowth(career);
+  career.marketValueHistory.push({ season: career.season, value: p.marketValue, overall: p.overall });
 
   const seasonRecord = {
     season: career.season, club: club.name, apps:s.apps, minutes:s.minutes,
     goals:s.goals, assists:s.assists, avgRating:s.avgRating, overall:p.overall,
-    finish, trophies:[...career.seasonTrophies], awards:[...seasonAwards],
-    nationalCaps: career.national.calledThisSeasonCaps || 0,
+    finish, leagueSize: finalTable.length || 17, trophies:[...career.seasonTrophies], awards:[...seasonAwards],
+    nationalCaps: career.national.caps,
   };
   career.history.push(seasonRecord);
+  pushNotification(career, { title:`Fine stagione ${career.season}`, text:`${s.apps} presenze, ${s.goals} gol, ${s.assists} assist. Posizione finale: ${finish}°.`, type:"season" });
 
   // reset season counters
   career.seasonStats = newSeasonStats();
@@ -198,6 +394,9 @@ function endSeason(career){
   // transfer window: generate offers
   career.transferOffers = generateTransferOffers(career);
   career.pendingTransferWindow = true;
+  if(career.transferOffers.length>0){
+    pushNotification(career, { title:"Offerte di mercato", text:`Hai ricevuto ${career.transferOffers.length} offerta/e. Gestiscile nella sezione Mercato.`, type:"market" });
+  }
 
   // retirement check
   const retireRoll = Math.random();
@@ -211,8 +410,18 @@ function endSeason(career){
     career.retired = true;
     career.retiredSummary = buildRetirementSummary(career);
   }
+  // NOTE: next season's fixtures/table/objectives are generated in prepareNewSeason(),
+  // called once the transfer window is resolved — so they always reflect the club
+  // the player actually plays for next season.
 
-  return { record: seasonRecord, awards: seasonAwards, trophies: career.seasonTrophies, retired: career.retired };
+  return { record: seasonRecord, awards: seasonAwards, trophies: career.seasonTrophies, retired: career.retired, objectiveResults };
+}
+
+function prepareNewSeason(career){
+  if(career.retired) return;
+  generateFixtures(career);
+  buildFreshTable(career);
+  generateObjectives(career);
 }
 
 // --- transfers ---
@@ -249,11 +458,14 @@ function generateTransferOffers(career){
 function acceptTransfer(career, offerIndex){
   const offer = career.transferOffers[offerIndex];
   if(!offer) return false;
+  const oldClub = currentClub(career).name;
   career.clubId = offer.clubId;
   career.contract = { salary: offer.salary, yearsLeft: offer.years };
   career.player.reputation = clamp(career.player.reputation + (TIER_ORDER[offer.tier]>=2?3:0), 0, 100);
   career.transferOffers = [];
   career.pendingTransferWindow = false;
+  pushNotification(career, { title:"Trasferimento completato", text:`Sei passato da ${oldClub} a ${offer.clubName}.`, type:"market" });
+  prepareNewSeason(career);
   saveCareer();
   return true;
 }
@@ -266,6 +478,8 @@ function renewContract(career){
   career.transferOffers = [];
   career.pendingTransferWindow = false;
   p.morale = clamp(p.morale+8,0,100);
+  pushNotification(career, { title:"Rinnovo firmato", text:`Hai rinnovato con ${currentClub(career).name} per ${years} anni.`, type:"market" });
+  prepareNewSeason(career);
   saveCareer();
 }
 
@@ -276,6 +490,7 @@ function stayWithoutRenewing(career){
   }
   career.transferOffers = [];
   career.pendingTransferWindow = false;
+  prepareNewSeason(career);
   saveCareer();
 }
 
