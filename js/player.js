@@ -43,15 +43,19 @@ function createPlayer(form){
   const potential = clamp(potentialBase - (age-17)*1.5, 50, 97);
 
   const overall = computeOverall(stats, form.position);
+  const preset = APPEARANCE_PRESETS.find(p=>p.id===form.appearance) || APPEARANCE_PRESETS[0];
 
   const player = {
     firstName: form.firstName.trim(),
     lastName: form.lastName.trim(),
+    shirtName: (form.shirtName||form.lastName).trim().toUpperCase().slice(0,12),
+    shirtNumber: clamp(parseInt(form.shirtNumber,10)||10, 1, 99),
     age, height: parseInt(form.height,10),
     foot: form.foot,
     nationality: form.nationality,
     position: form.position,
     style: form.style,
+    appearance: preset.id,
     stats,
     overall,
     potential: Math.round(potential),
