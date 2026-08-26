@@ -3,7 +3,6 @@
 document.addEventListener("DOMContentLoaded", ()=>{
   populateCreateForm();
   wireGlobalActions();
-  wireCreateForm();
   wireHubTabs();
   showScreen("screen-menu");
 });
@@ -16,6 +15,7 @@ function wireGlobalActions(){
 
     switch(action){
       case "new-career":
+        resetWizard();
         showScreen("screen-create");
         break;
       case "continue-career":
@@ -66,22 +66,36 @@ function wireGlobalActions(){
       case "advance":
         handleAdvance();
         break;
+      case "wizard-next":{
+        const form = document.getElementById("create-form");
+        if(!form.reportValidity()) return;
+        WIZARD.formValues = collectFormValues();
+        goToWizardStep(2);
+        break;
+      }
+      case "wizard-review":{
+        WIZARD.formValues.appearance = WIZARD.selectedAppearance;
+        WIZARD.pendingPlayer = createPlayer(WIZARD.formValues);
+        renderCreationSummary();
+        goToWizardStep(3);
+        break;
+      }
+      case "wizard-back":
+        goToWizardStep(1);
+        break;
+      case "wizard-back-2":
+        goToWizardStep(2);
+        break;
+      case "confirm-career":{
+        const career = initCareer(WIZARD.formValues, WIZARD.pendingPlayer);
+        const slot = findFreeSlot();
+        IFL.career = career;
+        IFL.activeSlot = slot;
+        saveCareer();
+        enterHub();
+        break;
+      }
     }
-  });
-}
-
-function wireCreateForm(){
-  const form = document.getElementById("create-form");
-  form.addEventListener("submit", (e)=>{
-    e.preventDefault();
-    const data = new FormData(form);
-    const values = Object.fromEntries(data.entries());
-    const career = initCareer(values);
-    const slot = findFreeSlot();
-    IFL.career = career;
-    IFL.activeSlot = slot;
-    saveCareer();
-    enterHub();
   });
 }
 
